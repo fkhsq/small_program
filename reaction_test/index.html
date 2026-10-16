@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<!-- 移动端视口：禁止缩放，消除「双击缩放」造成的约 300ms 点击判定延迟 -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#2c3e50">
+<title>反应速度测试</title>
+<style>
+  /* ===== 基础重置 ===== */
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    /* 禁止长按选中文字、禁止长按弹出菜单 */
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    /* 关键：让浏览器不必等待双击判定，点击立即上报 */
+    touch-action: manipulation;
+    /* 禁止移动端下拉刷新与橡皮筋滚动 */
+    overscroll-behavior: none;
+    overflow: hidden;
+  }
+
+  body {
+    display: flex;
+    flex-direction: column;
+    /* dvh 适配手机浏览器地址栏，vh 作为旧浏览器回退 */
+    height: 100vh;
+    height: 100dvh;
+    background: #2c3e50;
+    color: #ecf0f1;
+    font-family: "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    /* 适配刘海屏安全区域 */
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    /* 去掉移动端点击时的灰色高亮闪一下 */
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* ===== 顶部信息栏：进度 + 历史最佳 ===== */
+  header {
+    flex: 0 0 auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 16px;
+    font-size: clamp(12px, 3.4vw, 15px);
+    color: #bdc3c7;
+  }
+
+  /* ===== 中央测试区：占据主体，背景随状态变色（深色/红/绿） ===== */
+  #stage {
+    flex: 1 1 auto;
+    margin: 0 12px 0 12px;
+    border-radius: 14px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    padding: 20px;
+    background: #2c3e50;
+    color: #fff;
+    /* 状态切换不加过渡动画，避免拖慢视觉刺激的出现 */
+    transition: none;
+    cursor: pointer;
+  }
+
+  #stage .main-text {
+    font-size: clamp(20px, 6.4vw, 46px);
+    font-weight: 700;
+    line-height: 1.5;
+    white-space: pre-line; /* 允许用 \n 换行 */
+  }
+
+  #stage .sub-text {
+    margin-top: 14px;
+    font-size: clamp(13px, 3.6vw, 17px);
+    opacity: .85;
+    white-space: pre-line;
+  }
+
+  /* 反应时间数值单独放大 */
+  #stage .big-number {
+    font-size: clamp(34px, 12vw, 80px);
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.2;
+  }
+
+  /* ===== 底部：统计区 + 重新开始 ===== */
+  footer {
+    flex: 0 0 auto;
+    padding: 10px 16px 14px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 12px;
+  }
+
+  #stats {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: clamp(12px, 3.4vw, 15px);
+    color: #bdc3c7;
+    line-height: 1.7;
+    white-space: pre-line;
+  }
+
+  #resetBtn {
+    flex: 0 0 auto;
+    font: inherit;
+    font-size: clamp(13px, 3.6vw, 15px);
+    color: #fff;
+    background: #34495e;
+    border: 1px solid rgba(255, 255, 255, .14);
+    border-radius: 10px;
+    padding: 10px 18px;
+    cursor: pointer;
+    /* 手指点按区域不小于 44px */
+    min-height: 44px;
+    touch-action: manipulation;
+  }
+  #resetBtn:active { background: #46607a; }
+
+  /* ===== 三种状态的配色 ===== */
+  #stage.state-idle { background: #2c3e50; }
+  #stage.state-wait { background: #c0392b; }
+  #stage.state-go   { background: #27ae60; }
+
+  /* 极窄屏兜底：底部改为上下排列，按钮占满宽度 */
+  @media (max-width: 360px) {
+    footer { flex-direction: column-reverse; align-items: stretch; }
+    #resetBtn { width: 100%; }
+  }
+</style>
+</head>
+<body>
+
+  <!-- 顶部：进度与历史最佳 -->
+  <header>
+    <span id="roundInfo">进度：第 1 / 5 次</span>
+    <span id="bestInfo">历史最佳：暂无</span>
+  </header>
+
+  <!-- 中央测试区：点击/触摸或按空格触发 -->
+  <div id="stage" class="state-idle">
+    <div class="main-text" id="mainText">点击开始测试</div>
+    <div class="sub-text" id="subText">电脑：按空格 或 鼠标点击\n手机：点击屏幕</div>
+  </div>
+
+  <!-- 底部：统计与重新开始 -->
+  <footer>
+    <div id="stats">本轮成绩：暂无</div>
+    <button id="resetBtn" type="button">重新开始</button>
+  </footer>
+
+<script>
+(function () {
+  "use strict";
+
+  // ===== 常量配置 =====
+  var TOTAL_ROUNDS = 5;      // 每组测试的次数
+  var MIN_DELAY = 1000;      // 等待态最短时长（毫秒）
+  var MAX_DELAY = 3000;      // 等待态最长时长（毫秒）
+  var BEST_KEY = "reaction_test_best_ms"; // 历史最佳在 localStorage 中的键名
+
+  // ===== DOM 引用 =====
+  var stage     = document.getElementById("stage");
+  var mainText  = document.getElementById("mainText");
+  var subText   = document.getElementById("subText");
+  var statsEl   = document.getElementById("stats");
+  var roundInfo = document.getElementById("roundInfo");
+  var bestInfo  = document.getElementById("bestInfo");
+  var resetBtn  = document.getElementById("resetBtn");
+
+  // ===== 运行时状态 =====
+  var state = "idle";      // idle 空闲 / wait 等待 / go 刺激 / result 单次结果 / done 整组结束
+  var results = [];        // 本轮已完成成绩（毫秒）
+  var timerId = null;      // 等待态的定时器
+  var goTime = 0;          // 变绿（刺激出现）的时间点，单位毫秒
+  var best = loadBest();   // 历史最佳，null 表示暂无
+
+  // ===== 历史最佳读写（全部在本地，无任何网络请求） =====
+  function loadBest() {
+    try {
+      var v = localStorage.getItem(BEST_KEY);
+      if (v === null) return null;
+      var n = parseInt(v, 10);
+      return isNaN(n) ? null : n;
+    } catch (e) {
+      // 隐私模式等场景下 localStorage 不可用，降级为「暂无最佳」
+      return null;
+    }
+  }
+
+  function saveBest(value) {
+    try {
+      localStorage.setItem(BEST_KEY, String(value));
+    } catch (e) {
+      // 写入失败不影响测试
+    }
+  }
+
+  // ===== 界面刷新 =====
+  function setStage(stateName, mainHtml, subHtml) {
+    stage.className = "state-" + stateName;
+    mainText.innerHTML = mainHtml;
+    subText.innerHTML = subHtml || "";
+  }
+
+  function refreshTop() {
+    var done = results.length;
+    roundInfo.textContent = "进度：第 " + Math.min(done + 1, TOTAL_ROUNDS) + " / " + TOTAL_ROUNDS + " 次";
+    bestInfo.textContent = (best === null) ? "历史最佳：暂无" : "历史最佳：" + best + " ms";
+  }
+
+  function refreshStats() {
+    if (results.length === 0) {
+      statsEl.textContent = "本轮成绩：暂无";
+      return;
+    }
+    var detail = [], sum = 0, fastest = results[0], slowest = results[0];
+    for (var i = 0; i < results.length; i++) {
+      detail.push("第" + (i + 1) + "次 " + results[i] + "ms");
+      sum += results[i];
+      if (results[i] < fastest) fastest = results[i];
+      if (results[i] > slowest) slowest = results[i];
+    }
+    var avg = Math.round(sum / results.length);
+    statsEl.textContent = "本轮成绩： " + detail.join("  ") +
+      "\n平均 " + avg + " ms | 最快 " + fastest + " ms | 最慢 " + slowest + " ms";
+  }
+
+  // 根据用时给出等级评价
+  function grade(ms) {
+    if (ms < 200) return "优";
+    if (ms < 280) return "良";
+    if (ms < 380) return "一般";
+    return "待提升";
+  }
+
+  // ===== 状态流转 =====
+
+  // 开始一轮：进入等待态，随机延迟后变绿
+  function startRound() {
+    if (state === "done") results = []; // 上一整组结束后重新计分
+    state = "wait";
+    setStage("wait", "等待绿色…", "绿色出现后立刻按下");
+    refreshTop();
+
+    var delay = MIN_DELAY + Math.floor(Math.random() * (MAX_DELAY - MIN_DELAY + 1));
+    timerId = setTimeout(goGreen, delay);
+  }
+
+  // 切到刺激态：变绿并记录起点时间
+  function goGreen() {
+    timerId = null;
+    if (state !== "wait") return; // 已被抢跑取消
+    state = "go";
+    goTime = 0; // 0 表示「绿色出现时刻」尚未确定
+    setStage("go", "点击！", "");
+
+    // 先改样式，再在下一帧取时间戳：
+    // 记录的是绿色真正被绘制出来的时刻，避免把一帧的渲染延迟算进成绩。
+    requestAnimationFrame(function () {
+      if (state === "go") goTime = performance.now();
+    });
+  }
+
+  // 抢跑：变绿前按下，本轮作废
+  function falseStart() {
+    if (timerId !== null) { clearTimeout(timerId); timerId = null; }
+    state = "idle";
+    setStage("idle", "抢跑！", "绿色出现前不要按下\n点击重新开始");
+    refreshTop();
+  }
+
+  // 有效按下：计算反应时间（e 为原始事件，用于取其高精度时间戳）
+  function hit(e) {
+    // 优先使用事件自带的时间戳：它表示输入「产生」的时刻，比 JS 执行的时刻更准；
+    // 现代浏览器中它与 performance.now() 共用同一时间原点，可以直接相减。
+    var now = (e && e.timeStamp) ? e.timeStamp : performance.now();
+    // 若下一帧回调还没执行（按下快于一帧，实际不可能发生），退回到当前时刻
+    var t0 = (goTime > 0) ? goTime : now;
+    var elapsed = Math.round(now - t0);
+    if (elapsed < 0) elapsed = 0;
+    results.push(elapsed);
+
+    var isNewBest = (best === null) || (elapsed < best);
+    if (isNewBest) { best = elapsed; saveBest(elapsed); }
+
+    var g = grade(elapsed);
+    var bestTip = isNewBest ? "\n★ 新纪录！" : "";
+
+    if (results.length >= TOTAL_ROUNDS) {
+      // 一整组结束
+      state = "done";
+      var sum = 0, fastest = results[0], slowest = results[0];
+      for (var i = 0; i < results.length; i++) {
+        sum += results[i];
+        if (results[i] < fastest) fastest = results[i];
+        if (results[i] > slowest) slowest = results[i];
+      }
+      setStage(
+        "idle",
+        "本次 " + elapsed + " ms（" + g + "）" + bestTip,
+        "平均 " + Math.round(sum / results.length) + " ms｜最快 " + fastest + " ms｜最慢 " + slowest + " ms\n点击开始新一组"
+      );
+    } else {
+      // 单次结束，等待下一次
+      state = "result";
+      setStage(
+        "idle",
+        '<span class="big-number">' + elapsed + '</span> ms（' + g + '）' + bestTip,
+        "点击或按空格进入第 " + (results.length + 1) + " 次"
+      );
+    }
+    refreshTop();
+    refreshStats();
+  }
+
+  // 统一的「按下」入口
+  function press(e) {
+    if (state === "idle" || state === "result" || state === "done") {
+      startRound();
+    } else if (state === "wait") {
+      falseStart();
+    } else if (state === "go") {
+      hit(e);
+    }
+  }
+
+  // ===== 事件绑定 =====
+  // 首选 pointerdown：省掉「按下→抬起」的等待，响应更贴近真实按下的时刻。
+  stage.addEventListener("pointerdown", function (e) {
+    e.preventDefault();
+    press(e);
+  });
+
+  // click 兜底：只处理「非受信任」的合成点击（自动化脚本、部分无障碍工具），
+  // 以及不支持 PointerEvent 的旧浏览器。真实用户的点击一定会先触发 pointerdown，
+  // 这里直接忽略，因此不可能出现同一次按压被算两次（包括长按后松手的情况）。
+  var hasPointerEvent = !!window.PointerEvent;
+  stage.addEventListener("click", function (e) {
+    if (hasPointerEvent && e.isTrusted) return;
+    press(e);
+  });
+
+  // 键盘：空格 / 回车（电脑端）
+  window.addEventListener("keydown", function (e) {
+    if (e.code === "Space" || e.code === "Enter" || e.key === " " || e.key === "Enter") {
+      e.preventDefault(); // 阻止空格滚动页面
+      press(e);
+    }
+  });
+
+  // 重新开始：清空本轮成绩，保留历史最佳
+  resetBtn.addEventListener("pointerdown", function (e) {
+    e.preventDefault();
+  });
+  resetBtn.addEventListener("click", function () {
+    if (timerId !== null) { clearTimeout(timerId); timerId = null; }
+    results = [];
+    state = "idle";
+    setStage("idle", "点击开始测试", "电脑：按空格 或 鼠标点击\n手机：点击屏幕");
+    refreshTop();
+    refreshStats();
+  });
+
+  // 阻止移动端双击缩放、长按菜单等干扰
+  document.addEventListener("dblclick", function (e) { e.preventDefault(); }, { passive: false });
+  stage.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+
+  // 切到后台时放弃当前这一轮，避免回来时时间戳异常
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden && (state === "wait" || state === "go")) {
+      if (timerId !== null) { clearTimeout(timerId); timerId = null; }
+      state = "idle";
+      setStage("idle", "已暂停", "点击重新开始");
+    }
+  });
+
+  // ===== 初始化 =====
+  refreshTop();
+  refreshStats();
+})();
+</script>
+</body>
+</html>
