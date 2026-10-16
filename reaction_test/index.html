@@ -210,6 +210,12 @@
     stage.className = "state-" + stateName;
     mainText.innerHTML = mainHtml;
     subText.innerHTML = subHtml || "";
+    syncResetBtn();
+  }
+
+  // 右下角按钮文案随状态变化：一组结束后变成「开始新一组」，其余时候是「重新开始」
+  function syncResetBtn() {
+    resetBtn.textContent = (state === "done") ? "开始新一组" : "重新开始";
   }
 
   function refreshTop() {
@@ -308,7 +314,7 @@
       setStage(
         "idle",
         "本次 " + elapsed + " ms（" + g + "）" + bestTip,
-        "平均 " + Math.round(sum / results.length) + " ms｜最快 " + fastest + " ms｜最慢 " + slowest + " ms\n点击开始新一组"
+        "平均 " + Math.round(sum / results.length) + " ms｜最快 " + fastest + " ms｜最慢 " + slowest + " ms\n点右下角「开始新一组」按钮"
       );
     } else {
       // 单次结束，等待下一次
@@ -325,7 +331,10 @@
 
   // 统一的「按下」入口
   function press(e) {
-    if (state === "idle" || state === "result" || state === "done") {
+    // 一组结束后，中央区域不再响应：必须点右下角的「开始新一组」按钮
+    if (state === "done") return;
+
+    if (state === "idle" || state === "result") {
       startRound();
     } else if (state === "wait") {
       falseStart();
@@ -364,6 +373,16 @@
   });
   resetBtn.addEventListener("click", function () {
     if (timerId !== null) { clearTimeout(timerId); timerId = null; }
+
+    // 一组结束后：按钮语义是「开始新一组」，直接进入下一组的等待态
+    // （startRound 内部会因 state === "done" 清空上一组成绩）
+    if (state === "done") {
+      startRound();
+      refreshStats();
+      return;
+    }
+
+    // 其余状态：按钮语义是「重新开始」，清空成绩并回到初始界面
     results = [];
     state = "idle";
     setStage("idle", "点击开始测试", "电脑：按空格 或 鼠标点击\n手机：点击屏幕");
@@ -387,6 +406,7 @@
   // ===== 初始化 =====
   refreshTop();
   refreshStats();
+  syncResetBtn();
 })();
 </script>
 </body>
