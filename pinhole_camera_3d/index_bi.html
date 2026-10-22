@@ -351,7 +351,8 @@ const I18N = {
     screenV: 'Screen'
   }
 };
-let LANG = window.PINHOLE_LANG === 'en' ? 'en' : 'zh';
+// 默认英文：页面未显式指定 PINHOLE_LANG 时以英文进入，点击“中文”按钮可随时切换
+let LANG = window.PINHOLE_LANG === 'zh' ? 'zh' : 'en';
 let TXT = I18N[LANG];
 
 // 结构尺寸与取值范围
@@ -374,6 +375,9 @@ function flameProfile(y0, hgt, halfW, n) {
   for (let i = n - 1; i >= 0; i--) pts.push([-w(i / n), y0 + hgt * (i / n)]); // 左半侧：上→下
   return pts;
 }
+
+// 火焰半宽：3D 火焰旋转体与屏上成像共用同一数值，保证“所见即所投”
+const FLAME_HW = 0.5;
 
 // 物体形状：以“底边落在光轴 y=0 上、基准高度 8cm、水平居中”为模板绘制
 const SHAPES = {
@@ -403,7 +407,7 @@ const SHAPES = {
     // 轮廓一：蜡身（与 3D 圆柱蜡身半径 0.95cm 对应，修长比例约 5.7:1）；轮廓二：火焰
     polys: [
       [[-0.95, 0], [0.95, 0], [0.95, 5.6], [-0.95, 5.6]],
-      flameProfile(5.6, 2.4, 0.68, 14)
+      flameProfile(5.6, 2.4, FLAME_HW, 14)
     ],
     // 屏上成像的颜色：蜡身偏奶白、火焰偏橙黄，让像更接近真实烛影
     polyColors: ['#f7ead0', '#ffb03a']
@@ -482,7 +486,7 @@ const sun = new THREE.DirectionalLight(0xffffff, 0.0);
 sun.position.set(60, 90, 70);
 scene.add(sun);
 // 物体自身的发光（暖色点光），强度随环境变化，暗室中最亮
-const objLight = new THREE.PointLight(0xffa050, 1.2, 90, 2);
+const objLight = new THREE.PointLight(0xffbd85, 1.2, 90, 2);
 scene.add(objLight);
 let envObjIntensity = 1.2;   // 当前环境赋予“物体自发光”的基准强度（烛焰闪烁在此之上起伏）
 
@@ -790,22 +794,40 @@ const objMat = new THREE.MeshStandardMaterial({
   color: 0x222222, emissive: new THREE.Color(SHAPES.arrow.color), emissiveIntensity: 0.9,
   roughness: 0.55, metalness: 0.0
 });
-// 蜡烛用到的材质：蜡身、融蜡口沿、烛芯、外焰、内焰
-const waxMat = new THREE.MeshStandardMaterial({ color: 0xf2e6cd, roughness: 0.55, metalness: 0.0, emissive: 0x2a1c08, emissiveIntensity: 1.0 });
-const rimMat = new THREE.MeshStandardMaterial({ color: 0xfaf1de, roughness: 0.35, metalness: 0.0 });
-const wickMat = new THREE.MeshStandardMaterial({ color: 0x2b2118, roughness: 0.95, metalness: 0.0 });
+// 蜡烛用到的材质：蜡身（奶白蜡质 + 竖直明暗渐变）、蜡泪、融蜡口沿、熔池、烛芯、外焰/光晕/内焰/焰根
+const waxMat = new THREE.MeshStandardMaterial({
+  color: 0xffffff, map: makeWaxTexture(), roughness: 0.45, metalness: 0.0,
+  emissive: 0x1a1208, emissiveIntensity: 0.45,        // 蜡体被烛焰照透后的淡淡暖色
+  transparent: true, opacity: 0.97
+});
+// 蜡泪用不透明材质：避免与半透明蜡身叠在一起时出现暗斑
+const waxDripMat = new THREE.MeshStandardMaterial({
+  color: 0xf7eedb, roughness: 0.42, metalness: 0.0, emissive: 0x1a1208, emissiveIntensity: 0.4
+});
+const rimMat = new THREE.MeshStandardMaterial({ color: 0xfdf9f0, roughness: 0.30, metalness: 0.0 });
+const poolMat = new THREE.MeshBasicMaterial({ color: 0xffca85, transparent: true, opacity: 0.75 });
+const wickMat = new THREE.MeshStandardMaterial({ color: 0x241b13, roughness: 0.95, metalness: 0.0 });
 const flameMat = new THREE.MeshBasicMaterial({
-  color: 0xff8a1e, transparent: true, opacity: 0.72,
+  color: 0xffffff, map: makeFlameTexture(), transparent: true, opacity: 0.9,
+  blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide
+});
+const haloMat = new THREE.MeshBasicMaterial({      // 外焰的柔和边缘
+  color: 0xff9a35, transparent: true, opacity: 0.10,
   blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide
 });
 const coreMat = new THREE.MeshBasicMaterial({
   color: 0xfff4cc, transparent: true, opacity: 1.0,
   blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide
 });
+const blueMat = new THREE.MeshBasicMaterial({       // 焰根蓝色区（真实蜡烛火焰底部偏蓝）
+  color: 0x6f9dff, transparent: true, opacity: 0.22,
+  blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide
+});
 
 let objectGroup = null;
 let flick = 0;                                   // 火焰闪烁量（-1 ~ 1）
 let candleFlame = null, candleCore = null, candleGlow = null;
+let candleHalo = null, candleBlue = null, candleFlameRoot = null, candleFlameBaseY = 0;
 
 // 火焰外圈光晕贴图（径向渐变，叠加混合）
 function makeGlowTexture() {
@@ -821,45 +843,119 @@ function makeGlowTexture() {
   return new THREE.CanvasTexture(c);
 }
 
-// 拟真蜡烛：修长圆柱蜡身 + 融蜡口沿 + 烛芯 + 水滴形火焰（外焰/内焰两层）+ 光晕
+// 蜡身贴图：竖直方向由底部奶白渐变到顶部暖光，配合自发光模拟蜡质被烛焰照透
+function makeWaxTexture() {
+  const c = document.createElement('canvas');
+  c.width = 4; c.height = 128;
+  const g = c.getContext('2d');
+  const lg = g.createLinearGradient(0, 0, 0, 128);
+  lg.addColorStop(0, '#fff6e2');       // 画布顶部 → 蜡身顶端（贴图默认 flipY）
+  lg.addColorStop(0.55, '#f0e4cf');
+  lg.addColorStop(1, '#e2d3b8');       // 蜡身底部
+  g.fillStyle = lg;
+  g.fillRect(0, 0, 4, 128);
+  return new THREE.CanvasTexture(c);
+}
+
+// 火焰贴图：竖直方向由根部亮黄渐变到顶端渐隐，让焰尖自然消散、不出现生硬的旋转体边缘
+function makeFlameTexture() {
+  const c = document.createElement('canvas');
+  c.width = 4; c.height = 128;
+  const g = c.getContext('2d');
+  const lg = g.createLinearGradient(0, 0, 0, 128);
+  lg.addColorStop(0, 'rgba(255,120,30,0.06)');     // 画布顶部 → 焰尖（渐隐）
+  lg.addColorStop(0.5, 'rgba(255,150,45,0.75)');
+  lg.addColorStop(1, 'rgba(255,232,170,1)');       // 焰根（最亮）
+  g.fillStyle = lg;
+  g.fillRect(0, 0, 4, 128);
+  return new THREE.CanvasTexture(c);
+}
+
+// 拟真蜡烛模型：略带手作起伏的蜡身 + 内部透光 + 融蜡口沿与熔池 + 侧壁蜡泪 + 弯折烛芯
+// + 蓝焰根 + 水滴形外焰（含柔和边缘层）/内焰两层 + 外圈光晕
 function buildCandle(sc) {
   const g = new THREE.Group();
-  const H = 5.6 * sc;                                   // 蜡身高度（与轮廓一致）
+  const H = 5.6 * sc;                                   // 蜡身高度（与成像轮廓一致）
+  const NB = 26;
 
-  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.85 * sc, 0.95 * sc, H, 36, 1), waxMat);
-  body.position.y = H / 2;
-  g.add(body);
+  // 蜡身：上细下粗的旋转体，侧壁带极轻微起伏，避免“标准圆柱”的塑料感
+  const prof = [];
+  for (let i = 0; i <= NB; i++) {
+    const t = i / NB;
+    const wob = 0.010 * Math.sin(t * 11.0) + 0.006 * Math.sin(t * 23.0 + 1.3);
+    prof.push(new THREE.Vector2((0.95 - 0.11 * t + wob) * sc, t * H));
+  }
+  prof.push(new THREE.Vector2(0, H));                   // 顶部收口
+  g.add(new THREE.Mesh(new THREE.LatheGeometry(prof, 40), waxMat));
 
-  const rim = new THREE.Mesh(new THREE.CylinderGeometry(1.0 * sc, 0.9 * sc, 0.26 * sc, 36, 1), rimMat);
-  rim.position.y = H - 0.13 * sc;
+  // 融蜡口沿（一圈微厚的蜡唇）
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.80 * sc, 0.058 * sc, 8, 36), rimMat);
+  rim.rotation.x = -Math.PI / 2;
+  rim.position.y = H - 0.015 * sc;
   g.add(rim);
 
-  const wick = new THREE.Mesh(new THREE.CylinderGeometry(0.05 * sc, 0.07 * sc, 0.8 * sc, 8, 1), wickMat);
-  wick.position.y = H + 0.3 * sc;
-  g.add(wick);
+  // 熔池：烛芯周围被火焰融化的蜡液，微微发暖光
+  const pool = new THREE.Mesh(new THREE.CircleGeometry(0.79 * sc, 32), poolMat);
+  pool.rotation.x = -Math.PI / 2;
+  pool.position.y = H - 0.055 * sc;
+  g.add(pool);
+
+  // 蜡泪：从融蜡口沿向下淌的几道蜡流，紧贴蜡身、长短不一
+  [[0.7, 0.50], [2.2, 0.80], [3.6, 0.36], [5.1, 0.62]].forEach(([a, lenCm], i) => {
+    const rDrip = 0.075 * sc;
+    const rr = (0.90 - 0.010 * i) * sc;
+    const drip = new THREE.Mesh(new THREE.SphereGeometry(rDrip, 10, 12), waxDripMat);
+    drip.scale.set(0.85, (lenCm * sc) / (2 * rDrip), 0.85);
+    drip.position.set(Math.cos(a) * rr, H - 0.10 * sc - lenCm * sc * 0.5, Math.sin(a) * rr);
+    g.add(drip);
+  });
+
+  // 烛芯：弯曲的焦黑棉芯，尖端略偏
+  const wickCurve = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(0, H - 0.12 * sc, 0),
+    new THREE.Vector3(0.03 * sc, H + 0.20 * sc, 0),
+    new THREE.Vector3(0.10 * sc, H + 0.48 * sc, 0.02 * sc),
+    new THREE.Vector3(0.17 * sc, H + 0.68 * sc, 0.03 * sc)
+  ]);
+  g.add(new THREE.Mesh(new THREE.TubeGeometry(wickCurve, 14, 0.034 * sc, 6, false), wickMat));
+
+  // 火焰整体挂在一个子组里：闪烁时整簇火苗可左右/前后摇曳
+  candleFlameRoot = new THREE.Group();
+  candleFlameBaseY = H + 0.06 * sc;
+  candleFlameRoot.position.y = candleFlameBaseY;
+  g.add(candleFlameRoot);
 
   // 火焰轮廓与屏上成像用的是同一条数值轮廓，保证“所见即所投”
-  const prof = flameProfile(0, 2.4, 0.68, 14);
-  const half = prof.filter(p => p[0] > 0).map(p => new THREE.Vector2(Math.max(p[0] * sc, 0), p[1] * sc));
+  const flamePts = flameProfile(0, 2.4, FLAME_HW, 14);
+  const half = flamePts.filter(p => p[0] > 0).map(p => new THREE.Vector2(Math.max(p[0] * sc, 0), p[1] * sc));
   half.unshift(new THREE.Vector2(0, 0));                 // 封住旋转体底端
 
-  candleFlame = new THREE.Mesh(new THREE.LatheGeometry(half, 28), flameMat);
-  candleFlame.position.y = H;
-  g.add(candleFlame);
+  candleFlame = new THREE.Mesh(new THREE.LatheGeometry(half, 30), flameMat);
+  candleFlameRoot.add(candleFlame);
+
+  // 外焰柔和边缘：同轮廓放大 1.16 倍、极低不透明度，压掉旋转体的硬边
+  candleHalo = new THREE.Mesh(
+    new THREE.LatheGeometry(half.map(p => new THREE.Vector2(p.x * 1.16, p.y * 1.03)), 28), haloMat);
+  candleFlameRoot.add(candleHalo);
 
   // 内焰：同轮廓收窄到一半宽、约八成高，颜色更亮，叠在外焰内部形成层次
-  const inner = half.map(p => new THREE.Vector2(p.x * 0.5, p.y * 0.78));
-  candleCore = new THREE.Mesh(new THREE.LatheGeometry(inner, 24), coreMat);
-  candleCore.position.y = H + 0.1 * sc;
-  g.add(candleCore);
+  candleCore = new THREE.Mesh(
+    new THREE.LatheGeometry(half.map(p => new THREE.Vector2(p.x * 0.5, p.y * 0.78)), 24), coreMat);
+  candleCore.position.y = 0.10 * sc;
+  candleFlameRoot.add(candleCore);
+
+  // 焰根蓝色区：贴在烛芯附近的短锥体
+  candleBlue = new THREE.Mesh(new THREE.ConeGeometry(0.16 * sc, 0.34 * sc, 18, 1, true), blueMat);
+  candleBlue.position.y = 0.14 * sc;
+  candleFlameRoot.add(candleBlue);
 
   candleGlow = new THREE.Sprite(new THREE.SpriteMaterial({
     map: makeGlowTexture(), transparent: true, blending: THREE.AdditiveBlending,
     depthWrite: false, opacity: 0.45
   }));
   candleGlow.scale.set(5 * sc, 5 * sc, 1);
-  candleGlow.position.set(0, H + 1.1 * sc, 0);
-  g.add(candleGlow);
+  candleGlow.position.set(0, 1.1 * sc, 0);
+  candleFlameRoot.add(candleGlow);
 
   return g;
 }
@@ -870,6 +966,7 @@ function buildObject() {
     objectGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); });
   }
   candleFlame = candleCore = candleGlow = null;
+  candleHalo = candleBlue = candleFlameRoot = null;
   const sc = S.h / 8;
 
   if (S.shape === 'candle') {
@@ -892,25 +989,47 @@ function buildObject() {
   scene.add(objectGroup);
 }
 
-// 烛焰闪烁：外焰形状、内焰、光晕、光照强度同步起伏，
-// 并以约 10Hz 更新（而非逐帧），兼顾真实感与性能开销
+// 烛焰跳动：四路不同频率的正弦叠加成不规则抖动，驱动“整簇火苗”的伸缩、左右前后摇曳、
+// 焰根脉动、光晕与照明强度；动画 40ms 一次（25Hz，肉眼连续），
+// 屏上成像则限流到约 10Hz 重绘，避免高频重算带来性能负担
+let lastImgFlick = 0;
 function startCandleFlicker() {
   setInterval(() => {
-    if (S.shape !== 'candle' || !candleFlame) return;
+    if (S.shape !== 'candle' || !candleFlameRoot) return;
     const t = performance.now();
-    // 两个不同频率的正弦叠加，做出不规则的火焰抖动
-    flick = 0.55 * Math.sin(t * 0.0125) + 0.45 * Math.sin(t * 0.031 + 1.7);
     const sc = S.h / 8;
-    const sy = 1 + 0.14 * flick, sxz = 1 - 0.06 * flick;
-    candleFlame.scale.set(sxz, sy, sxz);
-    if (candleCore) candleCore.scale.set(sxz * 1.02, sy, sxz * 1.02);
+    const n1 = Math.sin(t * 0.0121);
+    const n2 = Math.sin(t * 0.0263 + 1.7);
+    const n3 = Math.sin(t * 0.0047 + 0.6);
+    const n4 = Math.sin(t * 0.0710 + 2.3);
+    flick = 0.42 * n1 + 0.28 * n2 + 0.20 * n3 + 0.10 * n4;   // -1 ~ 1 的不规则闪烁量
+
+    // 火苗伸缩（纵向拉长/压扁，横向随之收缩）
+    const sy = 1 + 0.15 * flick + 0.04 * n4;
+    const sx = 1 - 0.06 * flick + 0.03 * n2;
+    candleFlame.scale.set(sx, sy, sx);
+    if (candleHalo) candleHalo.scale.set(sx * 1.04, sy * 1.02, sx * 1.04);
+    if (candleCore) candleCore.scale.set(sx * 1.02, sy * 0.96, sx * 1.02);
+    if (candleBlue) candleBlue.scale.set(sx * 1.06, 1 + 0.10 * flick, sx * 1.06);
+
+    // 整簇火苗左右/前后摇曳并轻微倾斜（真实烛焰不会垂直不动）
+    candleFlameRoot.position.x = 0.055 * sc * n2 + 0.02 * sc * n4;
+    candleFlameRoot.position.z = 0.035 * sc * n3;
+    candleFlameRoot.rotation.z = 0.055 * n2 + 0.03 * n3;
+
+    // 光晕随焰体起伏
     if (candleGlow) {
-      candleGlow.scale.set(5 * sc * (1 + 0.16 * flick), 5 * sc * (1 + 0.12 * flick), 1);
-      candleGlow.material.opacity = 0.40 + 0.20 * flick;
+      candleGlow.scale.set(5 * sc * (1 + 0.18 * flick), 5 * sc * (1 + 0.13 * flick), 1);
+      candleGlow.material.opacity = 0.38 + 0.22 * flick;
     }
-    objLight.intensity = envObjIntensity * (1 + 0.30 * flick);
-    refreshOptics();   // 烛焰一亮一暗，屏上的像也随之明暗起伏
-  }, 95);
+
+    // 烛光照亮箱内，同步明暗并跟随火苗轻微晃动
+    objLight.intensity = envObjIntensity * (1 + 0.28 * flick);
+    objLight.position.x = -S.u + 2 + 0.12 * sc * n2;
+
+    // 屏上的像随之明暗起伏（限流到 ~10Hz）
+    if (t - lastImgFlick > 100) { lastImgFlick = t; refreshOptics(); }
+  }, 40);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1192,7 +1311,6 @@ function applyLang(lang) {
     langZhBtn.classList.toggle('on', LANG === 'zh');
     langEnBtn.classList.toggle('on', LANG === 'en');
   }
-  try { localStorage.setItem('pinhole_lang', LANG); } catch (e) { /* 隐私模式下忽略 */ }
   rebuildLabels();
   updateLabels();
   updateBoxCamera();
@@ -1388,12 +1506,8 @@ axisLine.visible = S.showAxis;
 refreshOptics();
 updateHUD();
 startCandleFlicker();
-// 切换版页面：读取上次选择的语言并应用（纯中文页 / 纯英文页没有语言按钮，走 PINHOLE_LANG）
-if (langZhBtn && langEnBtn) {
-  let saved = LANG;
-  try { saved = localStorage.getItem('pinhole_lang') || LANG; } catch (e) { }
-  applyLang(saved);
-}
+// 切换版页面：进入时统一以英文呈现（不读取历史选择），点击“中文”后才切换
+if (langZhBtn && langEnBtn) applyLang(LANG);
 loop();
 
 </script>
