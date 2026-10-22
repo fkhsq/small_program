@@ -275,20 +275,76 @@
 /* 0. 常量与状态                                                       */
 /* ------------------------------------------------------------------ */
 
-// 界面文字：页面在加载本文件之前设置 window.PINHOLE_LANG = 'en'，即可切换为英文版
+/* 界面文案：中英双语。
+   - 纯中文页 / 纯英文页：在加载本文件前设置 window.PINHOLE_LANG = 'zh' 或 'en'；
+   - 切换版页面：点击语言按钮调用 applyLang()，在运行时整页切换。 */
 const I18N = {
   zh: {
+    pageTitle: '小孔成像黑箱实验 · 3D 可操作演示',
+    h1: '小孔成像黑箱实验',
+    sub: '3D 可操作演示 · 光沿直线传播 · 倒立实像',
+    envTitle: '① 环境场景', envDark: '暗室蜡烛', envOutdoor: '室外白昼', envLab: '实验室',
+    presetTitle: '② 参数场景', pSharp: '清晰成像', pBlurry: '大孔模糊', pBig: '近物放大', pSmall: '远物缩小',
+    shapeTitle: '③ 物体形状', shArrow: '箭头 ↑', shF: '字母 F', shTri: '三角形', shCandle: '蜡烛',
+    sliderTitle: '④ 箱上滑块（调参）',
+    sldV: '光屏位置 · 像距 v', sldU: '物距 u（物体 → 小孔）', sldD: '小孔直径 d', sldH: '物体高度 h',
+    viewTitle: '⑤ 显示与视角',
+    vOrbit: '外部自由视角', vShell: '盒子外观', vBoxcam: '箱内摄像机全屏',
+    zoomOut: '－ 缩小', zoomIn: '＋ 放大',
+    chkRays: '显示光路（直线传播）', chkCut: '开盒（半透明剖视）', chkAxis: '光学轴线',
+    chkLabels: '文字标签', chkPip: '箱内摄像机小窗',
+    tip: '操作：按住拖拽旋转视角 · 滚轮或 ＋/－ 缩放 · 箱体前壁的蓝色滑钮可直接拖动，控制光屏位置',
+    hudTitle: '实时数据（按几何光学计算）',
+    hudU: '物距 u', hudV: '像距 v', hudM: '放大率 m = v/u', hudH: '物高 h', hudHP: '像高 h′ = h·v/u',
+    hudD: '小孔直径 d', hudB: '模糊圈 b = d(u+v)/u', hudE: '相对亮度 ∝ d²/u²',
+    hudNote: '屏上的像是倒立实像：上下、左右同时反转。<br>箱内摄像机观察窗需遮光，否则杂散光会冲淡像的对比度。',
+    infoSummary: '物理原理与公式',
+    info1: '光沿直线传播：物体各点向四方发光，只有穿过小孔的一束光能落到光屏上。',
+    info2: '像高：<em>h′ = h · v/u</em>；放大率 <em>m = v/u</em>。',
+    info3: '像的方向：倒立实像，上下左右均反转。',
+    info4: '清晰度：孔直径 d 使每个物点在屏上成为直径 <em>b = d(u+v)/u</em> 的光斑，d 越大像越模糊。',
+    info5: '亮度：落到屏上的光通量 <em>∝ d²/u²</em>，孔越小越清晰但越暗。',
+    info6: '结论：d 取小值才能接近理想针孔成像；实际实验中需在“亮度”与“清晰度”之间折中。',
     objLabel: '物体', holeLabel: '小孔', screenLabel: '光屏（像）',
     lens: fov => `定焦广角 ${fov}°`,
     screenV: '光屏'
   },
   en: {
+    pageTitle: 'Pinhole Camera Black Box · Interactive 3D Demo',
+    h1: 'Pinhole Camera Black Box',
+    sub: 'Interactive 3D demo · light travels in straight lines · inverted real image',
+    envTitle: '1 · ENVIRONMENT', envDark: 'Dark Room', envOutdoor: 'Outdoor Daylight', envLab: 'Laboratory',
+    presetTitle: '2 · PRESET SCENARIOS', pSharp: 'Sharp Image', pBlurry: 'Wide Hole (Blur)',
+    pBig: 'Near Object (Larger)', pSmall: 'Far Object (Smaller)',
+    shapeTitle: '3 · OBJECT SHAPE', shArrow: 'Arrow ↑', shF: 'Letter F', shTri: 'Triangle', shCandle: 'Candle',
+    sliderTitle: '4 · BOX SLIDER (PARAMETERS)',
+    sldV: 'Screen position · image distance v', sldU: 'Object distance u (object → pinhole)',
+    sldD: 'Pinhole diameter d', sldH: 'Object height h',
+    viewTitle: '5 · DISPLAY & VIEW',
+    vOrbit: 'Free Orbit View', vShell: 'Box Exterior', vBoxcam: 'Box Camera Fullscreen',
+    zoomOut: '− Zoom Out', zoomIn: '+ Zoom In',
+    chkRays: 'Show light rays (straight-line propagation)', chkCut: 'Open box (translucent cutaway)',
+    chkAxis: 'Optical axis', chkLabels: 'Text labels', chkPip: 'Box camera inset',
+    tip: 'Controls: drag to orbit · scroll wheel or +/− to zoom · the blue knob on the front wall can be dragged to move the screen',
+    hudTitle: 'LIVE DATA (GEOMETRIC OPTICS)',
+    hudU: 'Object distance u', hudV: 'Image distance v', hudM: 'Magnification m = v/u', hudH: 'Object height h',
+    hudHP: 'Image height h′ = h·v/u', hudD: 'Pinhole diameter d', hudB: 'Blur circle b = d(u+v)/u',
+    hudE: 'Relative brightness ∝ d²/u²',
+    hudNote: 'The screen shows an inverted real image: flipped both vertically and horizontally.<br>The box camera needs a light-tight enclosure, otherwise stray light washes out the contrast.',
+    infoSummary: 'Physics &amp; Formulas',
+    info1: 'Light travels in straight lines: every point of the object emits in all directions, but only the narrow bundle passing through the pinhole reaches the screen.',
+    info2: 'Image height: <em>h′ = h · v/u</em>; magnification <em>m = v/u</em>.',
+    info3: 'Orientation: an inverted real image — flipped both vertically and horizontally.',
+    info4: 'Sharpness: an aperture of diameter d spreads each object point into a spot of diameter <em>b = d(u+v)/u</em>; the larger d is, the blurrier the image.',
+    info5: 'Brightness: the flux reaching the screen is <em>∝ d²/u²</em>; a smaller aperture is sharper but dimmer.',
+    info6: 'Conclusion: d must be small for near-ideal pinhole imaging; in practice you trade brightness against sharpness.',
     objLabel: 'Object', holeLabel: 'Pinhole', screenLabel: 'Screen (image)',
     lens: fov => `Fixed ${fov}° wide`,
     screenV: 'Screen'
   }
 };
-const TXT = I18N[window.PINHOLE_LANG === 'en' ? 'en' : 'zh'];
+let LANG = window.PINHOLE_LANG === 'en' ? 'en' : 'zh';
+let TXT = I18N[LANG];
 
 // 结构尺寸与取值范围
 const CFG = {
@@ -645,12 +701,11 @@ screenMesh.rotation.y = -Math.PI / 2;
 screenMesh.position.set(S.v, 0, 0);
 scene.add(screenMesh);
 
-// 检测浏览器是否支持 canvas 模糊滤镜（不支持时退回多重采样叠加，物理含义相同）
-const supportsCtxFilter = (() => {
-  const c = document.createElement('canvas').getContext('2d');
-  c.filter = 'blur(2px)';
-  return c.filter === 'blur(2px)';
-})();
+// 模糊按“孔径圆盘卷积”实现：先把清晰像画到临时画布，再按圆斑平移叠加若干次。
+// 这样每个物点都被摊成直径 b 的圆斑，边缘出现宽度约 b 的半影，与针孔成像的几何关系一致。
+const sharpCanvas = document.createElement('canvas');
+sharpCanvas.width = sharpCanvas.height = CFG.canvasPx;
+const sharpCtx = sharpCanvas.getContext('2d');
 
 // 相对亮度：物理量 ∝ d²/u²（以 2mm 孔径、30cm 物距为 1.0）
 function relIllumRaw() {
@@ -685,40 +740,36 @@ function drawScreenImage() {
   const shapeObj = SHAPES[S.shape];
   const E = relIllumDisplay() * (S.shape === 'candle' ? 1 + 0.13 * flick : 1); // 烛焰闪烁 → 像的亮度随之起伏
   const bCm = (S.d / 10) * (S.u + S.v) / S.u;  // 模糊圈直径 b = d(u+v)/u
-  const sigmaPx = (bCm / 4) * pxPerCm;         // 用高斯模糊近似“圆斑卷积”，σ ≈ b/4
+  const radPx = (bCm / 2) * pxPerCm;           // 模糊圈半径（像素）
 
+  // 第 1 步：在临时画布上画出“理想清晰像”（只画一次，后面按圆斑平移叠加）
+  sharpCtx.setTransform(1, 0, 0, 1, 0, 0);
+  sharpCtx.globalCompositeOperation = 'source-over';
+  sharpCtx.clearRect(0, 0, N, N);
+  sharpCtx.save();
+  // 变换矩阵：x 取负号（左右反转）、y 取正号（画布 Y 向下，故上下亦反转），并放大 m 倍
+  sharpCtx.transform(-m * pxPerCm, 0, 0, m * pxPerCm, N / 2, N / 2);
+  fillShape(sharpCtx, shapeObj, sc);
+  sharpCtx.restore();
+
+  // 第 2 步：黑色底 + 按圆盘半径把清晰像叠加成“每个物点一个直径 b 的圆斑”
   imgCtx.setTransform(1, 0, 0, 1, 0, 0);
   imgCtx.globalCompositeOperation = 'source-over';
-  imgCtx.filter = 'none';
+  imgCtx.globalAlpha = 1;
   imgCtx.fillStyle = '#000000';
   imgCtx.fillRect(0, 0, N, N);
 
-  if (supportsCtxFilter) {
-    // 直接使用画布高斯模糊：等价于把每个物点投成的圆斑做卷积
-    imgCtx.save();
-    imgCtx.globalAlpha = E;
-    imgCtx.filter = `blur(${sigmaPx.toFixed(2)}px)`;
-    // 变换矩阵：x 取负号（左右反转）、y 取正号（画布 Y 向下，故上下亦反转），并放大 m 倍
-    imgCtx.transform(-m * pxPerCm, 0, 0, m * pxPerCm, N / 2, N / 2);
-    fillShape(imgCtx, shapeObj, sc);
-    imgCtx.restore();
-  } else {
-    // 兼容方案：在模糊圈内取若干采样点叠加，模拟每个物点的半影圆斑
-    const n = 29;
-    const rad = Math.max(sigmaPx * 1.7, 0.6);
-    imgCtx.globalCompositeOperation = 'lighter';
-    for (let i = 0; i < n; i++) {
-      const a = (i / n) * Math.PI * 2 * 7 % (Math.PI * 2);
-      const rr = rad * Math.sqrt((i % 9) / 9);
-      const dx = Math.cos(a) * rr, dy = Math.sin(a) * rr;
-      imgCtx.save();
-      imgCtx.globalAlpha = E / n;
-      imgCtx.transform(-m * pxPerCm, 0, 0, m * pxPerCm, N / 2 + dx, N / 2 + dy);
-      fillShape(imgCtx, shapeObj, sc);
-      imgCtx.restore();
-    }
-    imgCtx.globalCompositeOperation = 'source-over';
+  const n = radPx <= 0.35 ? 1 : Math.min(56, Math.max(14, Math.round(radPx * 5)));
+  imgCtx.globalCompositeOperation = 'lighter';
+  imgCtx.globalAlpha = Math.min(1, E) / n;
+  for (let i = 0; i < n; i++) {
+    // 黄金角螺旋：在圆盘内均匀取点，数值上逼近“与圆盘卷积”
+    const rr = radPx * Math.sqrt((i + 0.5) / n);
+    const a = i * 2.399963;               // 黄金角（约 137.5°）
+    imgCtx.drawImage(sharpCanvas, Math.cos(a) * rr, Math.sin(a) * rr);
   }
+  imgCtx.globalCompositeOperation = 'source-over';
+  imgCtx.globalAlpha = 1;
   imgTex.needsUpdate = true;
 }
 
@@ -951,9 +1002,20 @@ function makeLabel(text, color) {
   scene.add(sp);
   return sp;
 }
-labelSprites.obj = makeLabel(TXT.objLabel, '#ffb37a');
-labelSprites.hole = makeLabel(TXT.holeLabel, '#7fd4ff');
-labelSprites.screen = makeLabel(TXT.screenLabel, '#a5f3c0');
+// 切换语言时重建场景中的三个文字标签（旧贴图与材质一并释放）
+function rebuildLabels() {
+  for (const k of ['obj', 'hole', 'screen']) {
+    const sp = labelSprites[k];
+    if (!sp) continue;
+    scene.remove(sp);
+    if (sp.material.map) sp.material.map.dispose();
+    sp.material.dispose();
+  }
+  labelSprites.obj = makeLabel(TXT.objLabel, '#ffb37a');
+  labelSprites.hole = makeLabel(TXT.holeLabel, '#7fd4ff');
+  labelSprites.screen = makeLabel(TXT.screenLabel, '#a5f3c0');
+}
+rebuildLabels();
 
 function updateLabels() {
   // 盒子外观视角下箱壁不透光，箱内标签会“穿透”箱体显示，故一并隐藏
@@ -1104,6 +1166,36 @@ document.querySelectorAll('[data-view]').forEach(btn => {
 // 缩放按钮（滚轮同样可缩放）
 $('zoomIn').addEventListener('click', () => zoomBy(0.85));
 $('zoomOut').addEventListener('click', () => zoomBy(1.18));
+
+/* ---- 中英文切换（只有切换版页面才有这两个按钮） ---- */
+const langZhBtn = $('langZh'), langEnBtn = $('langEn');
+
+// 整页切换语言：面板文案、数据面板、原理说明、3D 标签、滑钮数值牌、镜头标注全部一起换
+function applyLang(lang) {
+  LANG = (lang === 'en') ? 'en' : 'zh';
+  TXT = I18N[LANG];
+  document.documentElement.lang = LANG === 'en' ? 'en' : 'zh-CN';
+  document.title = TXT.pageTitle;
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const k = el.getAttribute('data-i18n');
+    if (TXT[k] !== undefined) el.innerHTML = TXT[k];
+  });
+  if (langZhBtn && langEnBtn) {
+    langZhBtn.classList.toggle('on', LANG === 'zh');
+    langEnBtn.classList.toggle('on', LANG === 'en');
+  }
+  try { localStorage.setItem('pinhole_lang', LANG); } catch (e) { /* 隐私模式下忽略 */ }
+  rebuildLabels();
+  updateLabels();
+  updateBoxCamera();
+  updateSliderVisual();
+  markDirty();
+}
+
+if (langZhBtn && langEnBtn) {
+  langZhBtn.addEventListener('click', () => applyLang('zh'));
+  langEnBtn.addEventListener('click', () => applyLang('en'));
+}
 
 /* ------------------------------------------------------------------ */
 /* 11. 箱内摄像机画面（PiP 小窗 / 全屏），带真实摄像机质感叠加层        */
@@ -1288,6 +1380,12 @@ axisLine.visible = S.showAxis;
 refreshOptics();
 updateHUD();
 startCandleFlicker();
+// 切换版页面：读取上次选择的语言并应用（纯中文页 / 纯英文页没有语言按钮，走 PINHOLE_LANG）
+if (langZhBtn && langEnBtn) {
+  let saved = LANG;
+  try { saved = localStorage.getItem('pinhole_lang') || LANG; } catch (e) { }
+  applyLang(saved);
+}
 loop();
 
 </script>

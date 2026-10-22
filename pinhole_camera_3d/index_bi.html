@@ -709,12 +709,11 @@ screenMesh.rotation.y = -Math.PI / 2;
 screenMesh.position.set(S.v, 0, 0);
 scene.add(screenMesh);
 
-// 检测浏览器是否支持 canvas 模糊滤镜（不支持时退回多重采样叠加，物理含义相同）
-const supportsCtxFilter = (() => {
-  const c = document.createElement('canvas').getContext('2d');
-  c.filter = 'blur(2px)';
-  return c.filter === 'blur(2px)';
-})();
+// 模糊按“孔径圆盘卷积”实现：先把清晰像画到临时画布，再按圆斑平移叠加若干次。
+// 这样每个物点都被摊成直径 b 的圆斑，边缘出现宽度约 b 的半影，与针孔成像的几何关系一致。
+const sharpCanvas = document.createElement('canvas');
+sharpCanvas.width = sharpCanvas.height = CFG.canvasPx;
+const sharpCtx = sharpCanvas.getContext('2d');
 
 // 相对亮度：物理量 ∝ d²/u²（以 2mm 孔径、30cm 物距为 1.0）
 function relIllumRaw() {
@@ -749,40 +748,36 @@ function drawScreenImage() {
   const shapeObj = SHAPES[S.shape];
   const E = relIllumDisplay() * (S.shape === 'candle' ? 1 + 0.13 * flick : 1); // 烛焰闪烁 → 像的亮度随之起伏
   const bCm = (S.d / 10) * (S.u + S.v) / S.u;  // 模糊圈直径 b = d(u+v)/u
-  const sigmaPx = (bCm / 4) * pxPerCm;         // 用高斯模糊近似“圆斑卷积”，σ ≈ b/4
+  const radPx = (bCm / 2) * pxPerCm;           // 模糊圈半径（像素）
 
+  // 第 1 步：在临时画布上画出“理想清晰像”（只画一次，后面按圆斑平移叠加）
+  sharpCtx.setTransform(1, 0, 0, 1, 0, 0);
+  sharpCtx.globalCompositeOperation = 'source-over';
+  sharpCtx.clearRect(0, 0, N, N);
+  sharpCtx.save();
+  // 变换矩阵：x 取负号（左右反转）、y 取正号（画布 Y 向下，故上下亦反转），并放大 m 倍
+  sharpCtx.transform(-m * pxPerCm, 0, 0, m * pxPerCm, N / 2, N / 2);
+  fillShape(sharpCtx, shapeObj, sc);
+  sharpCtx.restore();
+
+  // 第 2 步：黑色底 + 按圆盘半径把清晰像叠加成“每个物点一个直径 b 的圆斑”
   imgCtx.setTransform(1, 0, 0, 1, 0, 0);
   imgCtx.globalCompositeOperation = 'source-over';
-  imgCtx.filter = 'none';
+  imgCtx.globalAlpha = 1;
   imgCtx.fillStyle = '#000000';
   imgCtx.fillRect(0, 0, N, N);
 
-  if (supportsCtxFilter) {
-    // 直接使用画布高斯模糊：等价于把每个物点投成的圆斑做卷积
-    imgCtx.save();
-    imgCtx.globalAlpha = E;
-    imgCtx.filter = `blur(${sigmaPx.toFixed(2)}px)`;
-    // 变换矩阵：x 取负号（左右反转）、y 取正号（画布 Y 向下，故上下亦反转），并放大 m 倍
-    imgCtx.transform(-m * pxPerCm, 0, 0, m * pxPerCm, N / 2, N / 2);
-    fillShape(imgCtx, shapeObj, sc);
-    imgCtx.restore();
-  } else {
-    // 兼容方案：在模糊圈内取若干采样点叠加，模拟每个物点的半影圆斑
-    const n = 29;
-    const rad = Math.max(sigmaPx * 1.7, 0.6);
-    imgCtx.globalCompositeOperation = 'lighter';
-    for (let i = 0; i < n; i++) {
-      const a = (i / n) * Math.PI * 2 * 7 % (Math.PI * 2);
-      const rr = rad * Math.sqrt((i % 9) / 9);
-      const dx = Math.cos(a) * rr, dy = Math.sin(a) * rr;
-      imgCtx.save();
-      imgCtx.globalAlpha = E / n;
-      imgCtx.transform(-m * pxPerCm, 0, 0, m * pxPerCm, N / 2 + dx, N / 2 + dy);
-      fillShape(imgCtx, shapeObj, sc);
-      imgCtx.restore();
-    }
-    imgCtx.globalCompositeOperation = 'source-over';
+  const n = radPx <= 0.35 ? 1 : Math.min(56, Math.max(14, Math.round(radPx * 5)));
+  imgCtx.globalCompositeOperation = 'lighter';
+  imgCtx.globalAlpha = Math.min(1, E) / n;
+  for (let i = 0; i < n; i++) {
+    // 黄金角螺旋：在圆盘内均匀取点，数值上逼近“与圆盘卷积”
+    const rr = radPx * Math.sqrt((i + 0.5) / n);
+    const a = i * 2.399963;               // 黄金角（约 137.5°）
+    imgCtx.drawImage(sharpCanvas, Math.cos(a) * rr, Math.sin(a) * rr);
   }
+  imgCtx.globalCompositeOperation = 'source-over';
+  imgCtx.globalAlpha = 1;
   imgTex.needsUpdate = true;
 }
 
