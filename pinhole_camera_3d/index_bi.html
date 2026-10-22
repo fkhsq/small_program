@@ -1104,7 +1104,7 @@ function updateHUD() {
 rngs.u.addEventListener('input', () => { S.u = +rngs.u.value; relayout(); refreshOptics(); updateHUD(); });
 rngs.v.addEventListener('input', () => { S.v = +rngs.v.value; relayout(); refreshOptics(); updateHUD(); });
 rngs.d.addEventListener('input', () => { S.d = +rngs.d.value; buildBaffle(); updateRays(); refreshOptics(); updateHUD(); });
-rngs.h.addEventListener('input', () => { S.h = +rngs.h.value; buildObject(); relayout(); updateHUD(); });
+rngs.h.addEventListener('input', () => { S.h = +rngs.h.value; buildObject(); relayout(); refreshOptics(); updateHUD(); });
 
 // 环境场景
 document.querySelectorAll('[data-env]').forEach(btn => {
@@ -1135,7 +1135,7 @@ document.querySelectorAll('[data-shape]').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('[data-shape]').forEach(b2 => b2.classList.toggle('on', b2 === btn));
     S.shape = btn.dataset.shape;
-    buildObject(); relayout(); updateHUD();
+    buildObject(); relayout(); refreshOptics(); updateHUD();
   });
 });
 
